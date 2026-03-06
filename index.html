@@ -148,6 +148,12 @@ header h1{font-size:17px;font-weight:700;color:var(--accent);letter-spacing:.04e
 #snap-preview{border-radius:6px;overflow:hidden;border:1px solid var(--border);max-height:70vh;overflow-y:auto;background:var(--bg)}
 #snap-preview canvas{display:block;width:100%;height:auto}
 ::-webkit-scrollbar{width:5px}
+@media (max-width: 768px) {
+.app { flex-direction: column }
+#tl-panel { width: 100%; min-width: unset; height: 45vh; border-right: none; border-bottom: 1px solid var(--border) }
+#right-panel { height: 55vh }
+header h1 { font-size: 13px }
+}
 </style>
 </head>
 <body>
