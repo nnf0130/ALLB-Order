@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>指令時間軸編排器</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Share+Tech+Mono&display=swap');
+:root{
+  --bg:#0d1018;--surface:#141820;--surface2:#191e2c;--surface3:#1e2438;
+  --border:#252d44;--accent:#5b9cf6;--text:#c9d1e8;--text-dim:#5a6480;
+  --green:#4ade80;--yellow:#fbbf24;--red:#f87171;--teal:#67e8f9;
+  --orange:#fb923c;--over:#f87171;--within:#4ade80;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:15px;min-height:100vh;overflow:hidden}
+
+/* ── Header ── */
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-items:center;gap:12px;height:54px;flex-shrink:0}
+header h1{font-size:17px;font-weight:700;color:var(--accent);letter-spacing:.04em}
+.hbtn{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 15px;cursor:pointer;font-size:14px;font-family:inherit;transition:border-color .15s,background .15s;white-space:nowrap}
+.hbtn:hover{border-color:var(--accent);background:var(--surface3)}
+.hbtn.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+.hbtn.pri:hover{opacity:.85}
+.hbtn.danger:hover{border-color:var(--red);color:var(--red);background:#1a0f0f}
+#total-display{margin-left:auto;font-family:'Share Tech Mono',monospace;font-size:26px;letter-spacing:.06em;transition:color .2s}
+.td-ok{color:var(--within)}.td-warn{color:var(--yellow)}.td-over{color:var(--over)}
+
+/* ── Layout ── */
+.app{display:flex;height:calc(100vh - 54px)}
+
+/* ── Timeline panel (left) ── */
+#tl-panel{width:480px;min-width:380px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.tl-head{padding:10px 16px;font-size:14px;color:var(--text-dim);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.clr-btn{background:none;border:none;color:var(--text-dim);font-size:13px;cursor:pointer;padding:3px 8px;border-radius:3px;font-family:inherit}
+.clr-btn:hover{color:var(--red);background:#200f0f}
+#tl-scroll{flex:1;overflow-y:auto;padding:10px 10px 10px 106px;position:relative}
+#tl-scroll::before{content:'';position:absolute;left:98px;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--within) 0%,var(--border) 40%,var(--over) 100%);opacity:.3}
+
+/* Timeline slots */
+.tl-slot{position:relative;min-height:72px;padding:4px 0 4px 12px;display:flex;align-items:flex-start}
+.tl-dot{position:absolute;left:-7px;top:13px;width:14px;height:14px;border-radius:50%;background:var(--border);border:2px solid var(--bg);z-index:1}
+.tl-slot.is-order .tl-dot{background:var(--accent)}
+.tl-slot.is-wait .tl-dot{background:var(--text-dim);width:10px;height:10px;left:-5px;top:17px}
+.tl-slot.is-over .tl-dot{background:var(--over)}
+.tl-slot.is-anchor .tl-dot{background:var(--within);width:16px;height:16px;left:-8px;top:11px}
+.tl-label{position:absolute;left:-104px;top:8px;width:94px;text-align:right;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text-dim);line-height:1.5;user-select:none}
+.tl-label.lbl-anchor{color:var(--within);font-weight:700}
+.tl-label.lbl-over{color:var(--over)}
+.anchor-label{font-size:15px;color:var(--within);font-family:'Share Tech Mono',monospace;padding:8px 0 2px 2px;font-weight:600}
+.over-label{font-size:14px;color:var(--over);font-family:'Share Tech Mono',monospace;padding:8px 0 2px 2px}
+
+/* Timeline order card */
+.oc{background:var(--surface2);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:7px;padding:10px 52px 10px 12px;width:100%;position:relative;transition:background .1s;display:flex;gap:11px;align-items:flex-start}
+.oc:hover{background:var(--surface3)}
+.oc.oc-over{border-left-color:var(--over)}
+.oc.oc-speed{border-left-color:var(--orange)}
+.oc.oc-trunc{border-left-color:var(--yellow)}
+.oc-img{width:62px;height:62px;border-radius:7px;object-fit:cover;flex-shrink:0;border:1px solid var(--border);background:var(--surface3)}
+.oc-img-placeholder{width:62px;height:62px;border-radius:7px;flex-shrink:0;border:1px dashed var(--border);background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-dim);text-align:center;line-height:1.3}
+.oc-body{flex:1;min-width:0}
+.oc-name{font-size:17px;font-weight:700;line-height:1.3;color:var(--text)}
+.oc-note-tag{display:inline-block;background:#1a2a1a;border:1px solid var(--green);color:var(--green);border-radius:3px;padding:0 6px;font-size:13px;font-weight:600;margin-right:5px;vertical-align:middle;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oc-effect{font-size:14px;color:var(--teal);margin-top:3px}
+.oc-times{font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--text-dim);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oc-trunc-note{font-size:12px;color:var(--yellow);margin-top:3px}
+/* edit note button */
+.oc-edit{position:absolute;right:26px;bottom:7px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:15px;padding:2px 4px;line-height:1;transition:color .1s}
+.oc-edit:hover{color:var(--accent)}
+/* inline note input */
+.oc-note-input{width:100%;margin-top:6px;background:var(--surface3);border:1px solid var(--accent);border-radius:4px;color:var(--text);font-family:inherit;font-size:14px;padding:5px 8px;outline:none}
+
+/* Wait card */
+.wc{display:flex;align-items:center;gap:7px;font-size:15px;color:var(--text-dim);font-style:italic;padding:11px 34px 11px 4px;position:relative;width:100%}
+.wc b{font-style:normal;color:var(--yellow);font-family:'Share Tech Mono',monospace;font-size:15px}
+.rm{position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:19px;line-height:1;padding:0 4px;transition:color .1s}
+.rm:hover{color:var(--red)}
+
+/* Wait controls */
+#wait-row{padding:10px 12px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex-shrink:0}
+#wait-row .wlbl{font-size:14px;color:var(--text-dim)}
+.wb{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 10px;cursor:pointer;font-size:14px;font-family:inherit;transition:background .1s}
+.wb:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.wcinp{width:52px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px 6px;font-size:14px;font-family:'Share Tech Mono',monospace;text-align:center}
+.wcinp:focus{outline:none;border-color:var(--accent)}
+.wadd{background:none;border:1px solid var(--accent);color:var(--accent);border-radius:5px;padding:5px 12px;cursor:pointer;font-size:14px;font-family:inherit}
+.wadd:hover{background:var(--accent);color:#fff}
+
+/* Drag */
+.tl-slot[draggable]{cursor:grab}
+.tl-slot[draggable]:active{cursor:grabbing}
+.tl-slot.dragging{opacity:.35}
+.tl-slot.drag-over .oc,.tl-slot.drag-over .wc{outline:2px dashed var(--accent);outline-offset:2px}
+
+/* ── Right panel ── */
+#right-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.fbar{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--surface);flex-wrap:wrap;flex-shrink:0}
+.fbar label{font-size:15px;color:var(--text-dim)}
+.fbar select,.srch{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:7px 12px;font-size:15px;font-family:inherit}
+.fbar select:focus,.srch:focus{outline:none;border-color:var(--accent)}
+.srch{width:200px}
+.srch::placeholder{color:var(--text-dim)}
+
+/* Order list scroll area – centered */
+#order-list-wrap{flex:1;overflow-y:auto;padding:14px 18px}
+#order-list{max-width:700px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+
+/* Effect card (new layout) */
+.or-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;overflow:hidden;transition:border-color .15s}
+.or-card:hover{border-color:#334060}
+.or-card.taken{opacity:.5}
+.or-card-head{padding:12px 16px 8px 16px}
+.or-eff-name{font-size:17px;font-weight:700;color:var(--text);line-height:1.3}
+.or-eff-times{font-size:14px;color:var(--text-dim);margin-top:4px;font-family:'Share Tech Mono',monospace}
+.or-eff-times span{margin-right:14px}
+.or-excl{font-size:13px;color:var(--yellow);margin-top:5px}
+.or-card-srcs{padding:8px 16px 12px 16px;border-top:1px solid var(--border);background:var(--surface2);display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.src-btn{display:inline-flex;align-items:center;gap:6px;background:var(--surface3);border:1px solid var(--border);border-radius:6px;padding:5px 11px;cursor:pointer;font-size:14px;font-family:inherit;color:var(--text);transition:border-color .12s,background .12s;white-space:nowrap}
+.src-btn:hover{border-color:var(--accent);background:#1c2540}
+.src-btn.selected{border-color:var(--accent);background:#162040;color:var(--accent)}
+.src-btn .s-icon{width:26px;height:26px;border-radius:4px;object-fit:cover;border:1px solid var(--border);flex-shrink:0}
+.src-btn .s-plus{width:26px;height:26px;border-radius:4px;border:1px dashed var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-dim);flex-shrink:0}
+.add-sel-btn{margin-left:auto;background:var(--accent);border:none;color:#fff;border-radius:7px;padding:6px 16px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:600;white-space:nowrap;transition:opacity .12s;flex-shrink:0}
+.add-sel-btn:hover{opacity:.85}
+.add-sel-btn:disabled{background:var(--surface3);color:var(--text-dim);cursor:default;opacity:.5}
+.taken-lbl{font-size:13px;color:var(--text-dim);margin-left:auto;padding:5px 12px;border:1px solid var(--border);border-radius:6px}
+
+/* Category badge */
+.cbadge{font-size:12px;border-radius:4px;padding:3px 8px;font-weight:700;white-space:nowrap;flex-shrink:0;margin-right:2px}
+.cb-火{background:#2a1010;color:#fca5a5;border:1px solid #401515}
+.cb-水{background:#0e1c2c;color:#7dd3fc;border:1px solid #132540}
+.cb-風{background:#0c221a;color:#86efac;border:1px solid #103020}
+.cb-光{background:#252510;color:#fef08a;border:1px solid #353514}
+.cb-闇{background:#1c1430;color:#c4b5fd;border:1px solid #251a40}
+.cb-屬性{background:#1a1a2a;color:#a5b4fc;border:1px solid #222235}
+.cb-增益減益{background:#0e2016;color:#6ee7b7;border:1px solid #123020}
+.cb-發動率{background:#251a0c;color:#fdba74;border:1px solid #352510}
+.cb-MP{background:#0e1a28;color:#93c5fd;border:1px solid #122240}
+.cb-盾{background:#1e1a0c;color:#fde68a;border:1px solid #2a2510}
+.cb-デバフ{background:#2a1010;color:#f87171;border:1px solid #401515}
+.cb-バフ{background:#0e200a;color:#86efac;border:1px solid #123010}
+.cb-其他{background:#1e1e1e;color:#888;border:1px solid #333}
+
+/* Share modal */
+#share-pop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300}
+#share-pop.open{display:flex;align-items:center;justify-content:center}
+.share-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 24px;width:min(600px,92vw);box-shadow:0 8px 40px rgba(0,0,0,.85)}
+#snap-preview{border-radius:6px;overflow:hidden;border:1px solid var(--border);max-height:70vh;overflow-y:auto;background:var(--bg)}
+#snap-preview canvas{display:block;width:100%;height:auto}
+::-webkit-scrollbar{width:5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⏱ 指令時間軸編排器</h1>
+  <button class="hbtn danger" onclick="clearTimeline()">清空</button>
+  <button class="hbtn pri" onclick="shareTimeline()">📷 截圖</button>
+  <div id="total-display" class="td-ok">15:00</div>
+</header>
+<div class="app">
+  <div id="tl-panel">
+    <div class="tl-head">
+      <span>⏳ 時間軸（從 15:00 倒數）</span>
+      <button class="clr-btn" onclick="clearTimeline()">清除</button>
+    </div>
+    <div id="tl-scroll"><div id="tl-ruler"></div></div>
+    <div id="wait-row">
+      <span class="wlbl">等待</span>
+      <button class="wb" onclick="addWait(10)">+10s</button>
+      <button class="wb" onclick="addWait(20)">+20s</button>
+      <button class="wb" onclick="addWait(30)">+30s</button>
+      <input class="wcinp" type="number" id="wcinp" value="40" min="1" max="999">
+      <button class="wadd" onclick="addWait(+document.getElementById('wcinp').value)">+s</button>
+    </div>
+  </div>
+  <div id="right-panel">
+    <div class="fbar">
+      <label>分類</label>
+      <select id="cat-sel" onchange="renderList()">
+        <option value="全部">全部</option>
+        <option value="屬性">屬性</option>
+        <option value="增益減益"> 增益/減益</option>
+        <option value="發動率"> 發動率</option>
+        <option value="MP"> MP</option>
+        <option value="盾"> 盾</option>
+        <option value="其他"> 其他</option>
+      </select>
+      <input class="srch" id="srch" type="text" placeholder="搜尋效果或指令名…" oninput="renderList()">
+      <span id="count-lbl" style="font-size:12px;color:var(--text-dim);margin-left:auto"></span>
+    </div>
+    <div id="order-list-wrap"><div id="order-list"></div></div>
+  </div>
+</div>
+
+<!-- Custom order modal -->
+
+
+<!-- Share / Screenshot preview -->
+<div id="share-pop">
+  <div class="share-box">
+    <h3 style="font-size:15px;color:var(--accent);margin-bottom:14px">📷 截圖下載</h3>
+    <div id="snap-preview"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="hbtn pri" id="snap-dl-btn">⬇ 下載 PNG</button>
+      <button class="hbtn" onclick="document.getElementById('share-pop').classList.remove('open')">關閉</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+const LIMIT = 900;
+
+// ═══════════════════════════════════════════════════════════════
+// 完整指令資料（レギオンマッチ用時間、來源：allbdb.gamewiki.jp）
+// group = 互斥組，同組只能放一個
+// ★ = 星級, paid = 有償
+// 火 = 1100
+// 水 = 1200
+// 風 = 1300
+// 光 = 1400
+// 闇 = 1500
+// 複合 = 2000
+// 增益/減益 = 3000
+// 發動率 = 4000
+// MP = 5000
+// 盾 = 6000
+// 其他 = 7000
+// ═══════════════════════════════════════════════════════════════
+const DEFAULT_ORDERS = [
+  // 屬性
+  {id:1101,name:"火属性効果増加Lv.3",    cat:"屬性",prep:30,cast:120,group:"fire_attr", note:"火属性効果増加（水属性被ダメも増加）", src:["女帝蝶の火継(P)","朱雀炎武(P)","火烈なる布陣"]},
+  {id:1102,name:"火属性効果増加Lv.4",    cat:"屬性",prep:20,cast:130,group:"fire_attr", note:"火属性メモリア効果が超特大増加",       src:["鳳凰炎天(P)","業炎の軍勢"]},
+  {id:1103,name:"火属性効果増加Lv.5",    cat:"屬性",prep:20,cast:130,group:"fire_attr", note:"火属性メモリア効果が極大増加",         src:["鳳炎天舞(P)","烈炎の灼軍"]},
+  {id:1104,name:"特殊:火属性効果増加Lv.3",cat:"屬性",prep:30,cast:120,group:"fire_attr", note:"火属性・特殊攻撃系メモリア効果増加",  src:["煌炎の神秘(P)","輝炎の神秘"]},
+  {id:1105,name:"通常:火属性効果増加Lv.3",cat:"屬性",prep:30,cast:120,group:"fire_attr", note:"火属性・通常攻撃系メモリア効果増加",  src:["劫火の勇猛(P)","焔の勇猛"]},
+
+  {id:1201,name:"水属性効果増加Lv.3",    cat:"屬性",prep:30,cast:120,group:"water_attr",note:"水属性効果増加（風属性被ダメも増加）", src:["天鳴雨の波紋(P)","水神の怒り(P)","氷結の布陣"]},
+  {id:1202,name:"水属性効果増加Lv.4",    cat:"屬性",prep:20,cast:130,group:"water_attr",note:"水属性メモリア効果が超特大増加",       src:["蒼海神威(P)","深淵の波動"]},
+  {id:1203,name:"水属性効果増加Lv.5",    cat:"屬性",prep:20,cast:130,group:"water_attr",note:"水属性メモリア効果が極大増加",         src:["深蒼海の神裁(P)","蒼淵の波濤"]},
+  {id:1204,name:"特殊:水属性効果増加Lv.3",cat:"屬性",prep:30,cast:120,group:"water_attr", note:"水属性・特殊攻撃系メモリア効果増加",  src:["雪獄の息吹(P)","氷霧の息吹"]},
+  {id:1205,name:"通常:水属性効果増加Lv.3",cat:"屬性",prep:30,cast:120,group:"water_attr",note:"水属性・通常攻撃系メモリア効果増加", src:["溟海の勇猛(P)","大水の勇猛"]},
+ 
+  {id:1301,name:"風属性効果増加Lv.3",    cat:"屬性",prep:30,cast:120,group:"wind_attr", note:"風属性効果増加（火属性被ダメも増加）", src:["神渡しの風巻き(P)","天翼のしらべ(P)","絶風大破の陣"]},
+  {id:1302,name:"風属性効果増加Lv.4",    cat:"屬性",prep:20,cast:130,group:"wind_attr", note:"風属性メモリア効果が超特大増加",       src:["天翔翼の息吹(P)","凶風の戦陣"]},
+  {id:1303,name:"風属性効果増加Lv.5",    cat:"屬性",prep:20,cast:130,group:"wind_attr", note:"風属性メモリア効果が極大増加",         src:["煌天翼の咆哮(P)","烈風の迅軍"]},
+  {id:1304,name:"特殊:風属性効果増加Lv.3",cat:"屬性",prep:30,cast:120,group:"wind_attr",note:"風属性・特殊攻撃系メモリア効果増加",  src:["裂空の神秘(P)","風薙の神秘"]},
+  {id:1305,name:"通常:風属性効果増加Lv.3",cat:"屬性",prep:30,cast:120,group:"wind_attr",note:"風属性・通常攻撃系メモリア効果増加",  src:["霊鳥の勇猛(P)","羽翼の勇猛"]},
+ 
+  {id:1401,name:"光・火属性効果増加Lv.3",cat:"屬性",prep:15,cast:60, group:"light_attr",note:"光属性特大増加・火属性増加",           src:["光背火翼(P)","極光と陽炎の心得"]},
+  {id:1402,name:"光・水属性効果増加Lv.3",cat:"屬性",prep:15,cast:60, group:"light_attr", note:"光属性特大増加・水属性増加",           src:["天光銀波(P)","陽光と漣の心得"]},
+  {id:1403,name:"光・風属性効果増加Lv.3",cat:"屬性",prep:15,cast:60, group:"light_attr", note:"光属性特大増加・風属性増加",           src:["光華廻風(P)","剣光と疾風の心得"]},
+  {id:1404,name:"光属性効果増加Lv.3",   cat:"屬性",prep:30,cast:120,group:"light_attr",note:"光属性メモリア効果が特大増加",         src:["玲瓏光艶(P)","神光の心得"]},
+  
+  {id:1501,name:"闇・火属性効果増加Lv.3",cat:"屬性",prep:15,cast:60, group:"dark_attr", note:"闇属性特大増加・火属性増加",           src:["暗黒業火(P)","漆黒と烈火の心得"]},
+  {id:1502,name:"闇・水属性効果増加Lv.3",cat:"屬性",prep:15,cast:60, group:"dark_attr", note:"闇属性特大増加・水属性増加",           src:["黒碑水鏡(P)","石墨と奔流の心得"]},
+  {id:1503,name:"闇・風属性効果増加Lv.3",cat:"屬性",prep:15,cast:60, group:"dark_attr", note:"闇属性特大増加・風属性増加",           src:["黒貂威風(P)","深闇と烈風の心得"]},
+  {id:1504,name:"闇属性効果増加Lv.3",    cat:"屬性",prep:30,cast:120,group:"dark_attr",note:"闇属性メモリア効果が特大増加",            src:["暗碧無双(P)","宵闇の心得"]},
+  
+  {id:2001,name:"[光闇]属性効果増加Lv.3",cat:"屬性",prep:15,cast:60, group:"lightdark",   note:"光・闇属性メモリア効果が特大増加",     src:["陰陽二律(P)","光陰の心得"]},
+  {id:2002,name:"[火水]属性効果増加Lv.4",cat:"屬性",prep:10,cast:65, group:"fw4",         note:"火・水属性メモリア効果が超特大増加",   src:["鳳蒼覇煌(P)","灼淵の戦波"]},
+  {id:2003,name:"[火風]属性効果増加Lv.4",cat:"屬性",prep:10,cast:65, group:"ff4",         note:"火・風属性メモリア効果が超特大増加",   src:["劫火凶風(P)","紅蓮と暴風の極意"]}, 
+  {id:2004,name:"[火風]属性効果増加Lv.5",cat:"屬性",prep:10,cast:65, group:"fw_l5",       note:"火・風属性メモリア効果が極大増加",     src:["焚天赫風(P)","紅炎と烈風の絶技"]},
+  {id:2005,name:"[水風]属性効果増加Lv.5L",cat:"屬性",prep:20,cast:130,group:"ww_l5",       note:"水・風属性メモリア効果が極大増加",     src:["蒼天煌威(P)","風淵の烈波"]},
+
+
+  // 增益/減益
+  {id:3001,name:"攻撃力増加Lv.3",        cat:"增益減益",prep:20,cast:0,group:"atk_up",     note:"味方前衛ATK/Sp.ATK特大上昇（永続）",  src:["清暉恒風(P)","攻勢激化の聖剣(P)","攻勢激化の豪剣"]},
+  {id:3002,name:"攻撃力増加Lv.4",        cat:"增益減益",prep:20,cast:0,group:"atk_up",     note:"味方前衛ATK/Sp.ATK超特大上昇（永続）",src:["熾烈攻勢の聖剣(P)"]},
+  {id:3002,name:"攻撃力減少Lv.3",        cat:"增益減益",prep:20,cast:0,group:"atk_dn",      note:"敵ATK/Sp.ATK特大減少（永続）",         src:["聖剣縛りの蔦(P)","豪剣縛りの蔦"]},
+  {id:3004,name:"防御力増加Lv.3",        cat:"增益減益",prep:20,cast:0,group:"def_up",     note:"味方前衛DEF/Sp.DEF特大上昇（永続）",  src:["守勢強化の鉄壁(P)","守勢強化の壁"]},
+  {id:3005,name:"防御力増加Lv.4",        cat:"增益減益",prep:20,cast:0,group:"def_up",     note:"味方前衛DEF/Sp.DEF超特大上昇（永続）",src:["堅硬守勢の防壁(P)"]},
+  {id:8006,name:"防御力減少Lv.3",        cat:"增益減益",prep:20,cast:0,group:"def_dn",      note:"敵前衛DEF/Sp.DEF特大減少（永続）",     src:["敵城砦鉄壁破壊(P)","敵城防壁破壊"]},
+  {id:3007,name:"火属性攻撃力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"fire_atk_up",   note:"味方火属性ATK特大上昇（永続）",        src:["炎刃激化の聖剣(P)","炎刃激化の豪剣"]},
+  {id:3008,name:"水属性攻撃力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"water_atk_up",  note:"味方水属性ATK特大上昇（永続）",        src:["水刃激化の聖剣(P)","水刃激化の豪剣"]},
+  {id:3009,name:"風属性攻撃力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"wind_atk_up",   note:"味方風属性ATK特大上昇（永続）",        src:["風刃激化の聖剣(P)","風刃激化の豪剣"]},
+  {id:3010,name:"光属性攻撃力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"light_atk_up",  note:"味方前衛光属性ATK特大上昇（永続）",    src:["光刃激化の聖剣(P)","光刃激化の豪剣"]},
+  {id:3011,name:"闇属性攻撃力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"dark_atk_up",   note:"味方前衛闇属性ATK特大上昇（永続）",    src:["闇刃激化の聖剣(P)","闇刃激化の豪剣"]},
+  {id:3012,name:"火属性攻撃力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"fire_atk_dn",note:"敵火属性ATK特大減少（永続）",         src:["炎刃縛りの大蔦(P)","炎刃縛りの蔦"]},
+  {id:3013,name:"火属性攻撃力減少Lv.4",  cat:"增益減益",prep:20,cast:0,group:"fire_atk_dn",note:"敵火属性ATK超特大減少（永続）",       src:["炎刃縛りの大棘蔦(P)","炎刃縛りの棘蔦"]},
+  {id:3014,name:"水属性攻撃力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"water_atk_dn",note:"敵水属性ATK特大減少（永続）",        src:["水刃縛りの大蔦(P)","水刃縛りの蔦"]},
+  {id:3015,name:"水属性攻撃力減少Lv.4",  cat:"增益減益",prep:20,cast:0,group:"water_atk_dn",note:"敵水属性ATK超特大減少（永続）",      src:["水刃縛りの大棘蔦(P)","水刃縛りの棘蔦"]},
+  {id:3016,name:"風属性攻撃力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"wind_atk_dn", note:"敵前衛風属性ATK特大減少（永続）",      src:["風刃縛りの大蔦(P)","風刃縛りの蔦"]},
+  {id:3017,name:"光属性攻撃力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"light_atk_dn",note:"敵前衛光属性ATK特大減少（永続）",      src:["光刃縛りの大蔦(P)","光刃縛りの蔦"]},
+  {id:3018,name:"闇属性攻撃力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"dark_atk_dn", note:"敵前衛闇属性ATK特大減少（永続）",      src:["闇刃縛りの大蔦(P)","闇刃縛りの蔦"]},
+  {id:3019,name:"火属性防御力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"fire_def_up",note:"味方火属性DEF特大上昇（永続）",        src:["炎鎧強化の鉄壁(P)","炎鎧強化の壁"]},
+  {id:3020,name:"火属性防御力増加Lv.4",  cat:"增益減益",prep:20,cast:0,group:"fire_def_up",note:"味方火属性DEF超特大上昇（永続）",      src:["炎鎧強化の大城壁(P)","炎鎧強化の城壁"]},
+  {id:3021,name:"水属性防御力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"water_def_up",note:"味方水属性DEF特大上昇（永続）",       src:["水鎧強化の鉄壁(P)","水鎧強化の壁"]},
+  {id:3022,name:"水属性防御力増加Lv.4",  cat:"增益減益",prep:20,cast:0,group:"water_def_up",note:"味方水属性DEF超特大上昇（永続）",     src:["水鎧強化の大城壁(P)","水鎧強化の城壁"]},
+  {id:3023,name:"風属性防御力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"wind_def_up",   note:"味方風属性DEF特大上昇（永続）",        src:["風鎧強化の鉄壁(P)","風鎧強化の壁"]},
+  {id:3024,name:"光属性防御力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"light_def_up",  note:"味方前衛光属性DEF特大上昇（永続）",    src:["光鎧強化の鉄壁(P)","光鎧強化の壁"]},
+  {id:3025,name:"闇属性防御力増加Lv.3",  cat:"增益減益",prep:20,cast:0,group:"dark_def_up",   note:"味方前衛闇属性DEF特大上昇（永続）",    src:["闇鎧強化の鉄壁(P)","闇鎧強化の壁"]},
+  {id:3026,name:"火属性防御力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"fire_def_dn", note:"敵前衛火属性DEF特大減少（永続）",      src:["炎鎧の鉄壁破壊(P)","炎鎧の壁破壊"]},
+  {id:3027,name:"水属性防御力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"water_def_dn",note:"水属性DEF特大減少（永続）",            src:["水鎧の鉄壁破壊(P)","水鎧の壁破壊"]},
+  {id:3028,name:"風属性防御力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"wind_def_dn", note:"敵前衛風属性DEF特大減少（永続）",      src:["風鎧の鉄壁破壊(P)","風鎧の壁破壊"]},
+  {id:3027,name:"光属性防御力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"light_def_dn",note:"敵前衛光属性DEF特大減少（永続）",      src:["光鎧の鉄壁破壊(P)","光鎧の壁破壊"]},
+  {id:3030,name:"闇属性防御力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"dark_def_dn", note:"敵前衛闇属性DEF特大減少（永続）",      src:["闇鎧の鉄壁破壊(P)","闇鎧の壁破壊"]},
+
+  // 發動率
+  {id:4001,name:"補助スキル発動率増加Lv.3",cat:"發動率",prep:20,cast:80,group:"assist_up_l3",note:"味方全体補助スキル発動率特大増加",     src:["覚醒の日輪(P)","覚醒の三日月"]},
+  {id:4002,name:"補助スキル発動率増加Lv.4",cat:"發動率",prep:20,cast:90,group:"assist_up_l4",note:"味方全体補助スキル発動率超特大増加",   src:["覚醒の大天光(P)","覚醒の満月"]},
+  {id:4003,name:"補助スキル発動率減少Lv.3",cat:"發動率",prep:20,cast:80,group:"assist_dn_l3",note:"敵全体補助スキル発動率特大減少",       src:["日輪の覚醒妨害(P)","三日月の覚醒妨害"]},
+  {id:4004,name:"補助スキル発動率減少Lv.4",cat:"發動率",prep:20,cast:90,group:"assist_dn_l4",note:"敵全体補助スキル発動率超特大減少",     src:["大天光の覚醒妨害(P)","満月の覚醒妨害"]},
+
+  // MP
+  {id:5001,name:"MP軽減Lv.2",            cat:"MP",  prep:20,cast:70, group:"mp_reduce",   note:"味方全員メモリア消費MP特大軽減",       src:["魔減の展開"]},
+  {id:5002,name:"MP軽減Lv.3",            cat:"MP",  prep:20,cast:80, group:"mp_reduce",   note:"味方全員メモリア消費MP特大軽減",       src:["魔縮領域(P)"]},
+  {id:5003,name:"全体MP回復Lv.2",         cat:"MP",  prep:20,cast:0,  group:"mp_recover",  note:"味方全体のMPを40%回復（即時）",      src:["広域魔導強化の陣"]},
+  {id:5004,name:"全体MP回復Lv.3",         cat:"MP",  prep:20,cast:0,  group:"mp_recover",  note:"味方全体のMPを40%回復（即時）",      src:["広域魔導凱旋(P)","広域魔導復古の策"]},
+  {id:5005,name:"前衛MP回復Lv.2",         cat:"MP",  prep:20,cast:0,  group:"front_mp_recover",  note:"味方全体のMPを40%回復（即時）", src:["前衛魔導強化の陣"]},
+  {id:5006,name:"後衛MP回復Lv.2",         cat:"MP",  prep:20,cast:0,  group:"back_mp_recover",  note:"味方全体のMPを40%回復（即時）", src:["後衛魔導強化の陣"]},
+
+  // 盾
+  {id:6001,name:"火属性効果減少Lv.2",    cat:"盾",prep:30,cast:70, group:"fire_down", note:"敵の火属性スキル効果が大減少",          src:["火除けの盾"]},
+  {id:6002,name:"火属性効果減少Lv.3",    cat:"盾",prep:20,cast:100, group:"fire_down", note:"敵の火属性スキル効果が特大減少",       src:["朱雀の御盾(P)","火烈の盾"]},
+  {id:6003,name:"火属性効果減少Lv.4",    cat:"盾",prep:15,cast:105, group:"fire_down", note:"敵の火属性スキル効果が超特大減少",     src:["鳳凰の御盾(P)","業炎の盾"]},
+  {id:6004,name:"火属性効果減少Lv.5",    cat:"盾",prep:10,cast:110, group:"fire_down", note:"敵の火属性スキル効果が極大減少",       src:["鳳炎封界(P)","烈炎の聖盾"]},
+  {id:6005,name:"水属性効果減少Lv.2",    cat:"盾",prep:30,cast:70, group:"water_down",note:"敵の水属性スキル効果が大減少",          src:["水払いの盾"]},
+  {id:6006,name:"水属性効果減少Lv.3",    cat:"盾",prep:20,cast:100, group:"water_down",note:"敵の水属性スキル効果が特大減少",       src:["水神の御盾(P)","氷結の盾"]},
+  {id:6007,name:"水属性効果減少Lv.5",    cat:"盾",prep:10,cast:110, group:"water_down",note:"敵の水属性スキル効果が極大減少",       src:["蒼神封界(P)","深淵の聖盾"]},
+  {id:6008,name:"風属性効果減少Lv.2",    cat:"風",prep:30,cast:70,group:"wind_down", note:"敵の風属性スキル効果が大減少",          src:["風止めの盾"]},
+  {id:6009,name:"風属性効果減少Lv.3",    cat:"風",prep:20,cast:100,group:"wind_down", note:"敵の風属性スキル効果が特大減少",       src:["天翼の御盾(P)","絶風の盾"]},
+  {id:6010,name:"風属性効果減少Lv.4",    cat:"風",prep:15,cast:105,group:"wind_down", note:"敵の風属性スキル効果が超特大減少",     src:["天翔翼の御盾(P)","凶風の盾"]},
+  {id:6011,name:"風属性効果減少Lv.5",    cat:"風",prep:10,cast:110,group:"wind_down", note:"敵の風属性スキル効果が極大減少",       src:["煌天封界(P)","烈風の聖盾"]},
+  {id:6012,name:"通常ダメージ軽減Lv.3",   cat:"盾",  prep:30,cast:90, group:"guard",note:"通常系攻撃ダメージを大軽減",               src:["衝撃返しの鉄壁(P)","衝撃返しの盾"]},
+  {id:6013,name:"特殊ダメージ軽減Lv.3",   cat:"盾",  prep:30,cast:90, group:"guard",  note:"特殊系攻撃ダメージを大軽減",             src:["特異返しの鉄壁(P)","特異返しの盾"]},
+ 
+  // 其他
+  {id:7001,name:"劣勢時攻撃効果増加Lv.3",   cat:"其他",prep:30,cast:120,group:"disadvantage",note:"劣勢時のみ、味方前衛スキル攻撃効果特大増加",src:["革命の御旗(P)","不屈の御旗"]},
+  {id:7002,name:"オーダー使用リセットLv.3",    cat:"其他",prep:30,cast:0, group:"order_reset", note:"自身以外の味方オーダー使用回数をリセット",src:["刻戻りのクロノグラフ(P)","回帰の砂時計"]},
+  {id:7003,name:"全体再編Lv.3",           cat:"其他",prep:30,cast:0, group:"reform_all",  note:"味方全体ユニットチェンジ回数をリセット",src:["広域再編の陣(P)","広域再編の策"]},
+  {id:7004,name:"前衛再編Lv.3",           cat:"其他",prep:15,cast:0, group:"reform_front",note:"味方前衛ユニットチェンジ回数をリセット",src:["前衛再編の陣(P)","前衛再編の策"]},
+  {id:7005,name:"後衛再編Lv.3",           cat:"其他",prep:15,cast:0, group:"reform_back", note:"味方後衛ユニットチェンジ回数をリセット",src:["後衛再編の陣(P)","後衛再編の策"]},
+  {id:7006,name:"準備時間短縮Lv.3",       cat:"其他",prep:5, cast:0, group:"prep_reduce", note:"⚡ 次の指令の準備時間を自動的に5秒に短縮",src:["戦術加速の陣(P)","戦術加速の策"]},
+  {id:7007,name:"効果時間短縮Lv.3",       cat:"其他",prep:30,cast:0, group:"eff_shorten", note:"敵が次に使うオーダーの効果時間を60秒に変更",src:["定めの時辰儀(P)","操りの時計"]},
+  {id:7008,name:"支援効果増加Lv.3",       cat:"其他",prep:20,cast:80,group:"support_up",   note:"味方支援メモリア効果が特大増加",       src:["支えの祝福(P)","支えの波動"]},
+  {id:7009,name:"支援効果減少Lv.3",       cat:"其他",prep:20,cast:80,group:"support_dn",   note:"敵支援メモリア効果が特大減少",         src:["支えの反動(P)","支えの破却"]},
+  {id:7010,name:"妨害効果増加Lv.3",       cat:"其他",prep:20,cast:80,group:"disturb_up",   note:"味方妨害メモリア効果が特大増加",       src:["妨げの祝福(P)","妨げの波動"]},
+  {id:7011,name:"妨害効果減少Lv.3",       cat:"其他",prep:20,cast:80,group:"disturb_dn",   note:"敵妨害メモリア効果が特大減少",         src:["妨げの反動(P)","妨げの破却"]},
+
+
+];
+
+// ── State ────────────────────────────────────────
+let orders = (() => {
+  try{const s=localStorage.getItem('ocomp_orders_v3');if(s)return JSON.parse(s);}catch(e){}
+  return DEFAULT_ORDERS.map(o=>({...o}));
+})();
+let timeline=[];
+let nextId=99000;
+let selectedSrc={};
+
+function saveOrders(){localStorage.setItem('ocomp_orders_v3',JSON.stringify(orders));}
+
+// 圖片從 images/ 資料夾讀取，檔名 = 指令名稱，支援 png/jpg/webp
+// 用 <img onerror> 依序嘗試副檔名
+function imgPath(name){
+  // 回傳第一個嘗試的路徑，其餘交給 imgEl 的 onerror 鏈
+  return `images/${encodeURIComponent(name)}.png`;
+}
+function setImgWithFallback(el, name){
+  const exts=['png','jpg','jpeg','webp'];
+  let i=0;
+  function tryNext(){
+    if(i>=exts.length){
+      // 全部失敗 → 顯示文字佔位
+      el.style.display='none';
+      const ph=el.nextSibling;
+      if(ph&&ph.classList&&ph.classList.contains('oc-img-placeholder'))ph.style.display='flex';
+      return;
+    }
+    el.src=`images/${encodeURIComponent(name)}.${exts[i++]}`;
+  }
+  el.onerror=tryNext;
+  el.onload=()=>{
+    el.style.display='block';
+    const ph=el.nextSibling;
+    if(ph&&ph.classList&&ph.classList.contains('oc-img-placeholder'))ph.style.display='none';
+  };
+  tryNext();
+}
+
+function activeGroups(){
+  const gs=new Set();
+  for(const e of timeline)if(e.type==='order'&&e.group)gs.add(e.group);
+  return gs;
+}
+function isPrepReduce(e){return e.type==='order'&&e.group==='prep_reduce';}
+// 補助スキル発動率減少：効果は必ず 02:00（経過780s）で強制終了
+const ASSIST_DN_CUTOFF = LIMIT - 120; // = 780s elapsed
+function isAssistDown(e){return e.type==='order'&&(e.group==='assist_dn_l4'||e.group==='assist_dn_l3');}
+
+function computeTimeline(){
+  let elapsed=0;
+  const entries=[];
+  let nextPrepOverride=false;
+  for(const e of timeline){
+    const start=elapsed;
+    if(e.type==='wait'){
+      elapsed+=e.duration;
+      entries.push({...e,start,end:elapsed,prepReduced:false,castTrunc:false});
+    }else{
+      let effectivePrep=e.prep;
+      let prepReduced=false;
+      if(nextPrepOverride&&!isPrepReduce(e)){effectivePrep=5;prepReduced=true;nextPrepOverride=false;}
+      if(isPrepReduce(e)) nextPrepOverride=true;
+
+      let effectiveCast=e.cast;
+      let castTrunc=false;
+      if(isAssistDown(e)&&e.cast>0){
+        // 発動開始時刻（経過秒）
+        const activateAt=start+effectivePrep;
+        // 02:00 で強制終了なので、最大発動時間 = 780 - activateAt
+        const maxCast=ASSIST_DN_CUTOFF - activateAt;
+        if(maxCast<=0){
+          // もう02:00を過ぎている→発動時間0
+          effectiveCast=0;castTrunc=true;
+        }else if(maxCast<e.cast){
+          effectiveCast=maxCast;castTrunc=true;
+        }
+        // maxCast >= e.cast の場合は通常通り（截斷なし）
+      }
+
+      elapsed+=effectivePrep+effectiveCast;
+      entries.push({...e,start,end:elapsed,effectivePrep,prepReduced,effectiveCast,castTrunc});
+    }
+  }
+  return{entries,elapsed};
+}
+
+function toCountdown(sec){
+  const r=LIMIT-sec;
+  if(r>=0)return{label:`${Math.floor(r/60)}:${String(r%60).padStart(2,'0')} @${r}s`,over:false};
+  return{label:`+${-r}s`,over:true};
+}
+
+// ── Drag ─────────────────────────────────────────
+let dragIdx=null;
+
+// ── Timeline render ───────────────────────────────
+function renderTimeline(){
+  const ruler=document.getElementById('tl-ruler');
+  const{entries,elapsed}=computeTimeline();
+  ruler.innerHTML='';
+  const a=document.createElement('div');
+  a.className='tl-slot is-anchor';
+  a.innerHTML=`<div class="tl-dot"></div><div class="tl-label lbl-anchor">15:00</div><div class="anchor-label">▶ 戰鬥開始</div>`;
+  ruler.appendChild(a);
+  let overInserted=false;
+  for(let i=0;i<entries.length;i++){
+    const e=entries[i];
+    if(!overInserted&&e.start>=LIMIT){
+      overInserted=true;
+      const ol=document.createElement('div');ol.className='tl-slot';
+      ol.innerHTML=`<div class="tl-dot" style="background:var(--over)"></div><div class="tl-label lbl-over">0:00</div><div class="over-label">⚠ 超出 15 分鐘</div>`;
+      ruler.appendChild(ol);
+    }
+    const disp=toCountdown(e.start);
+    const slot=document.createElement('div');
+    slot.className=`tl-slot ${e.type==='order'?(disp.over?'is-over':'is-order'):'is-wait'}`;
+    slot.draggable=true;
+    slot.dataset.idx=i;
+    slot.addEventListener('dragstart',ev=>{dragIdx=i;ev.dataTransfer.effectAllowed='move';slot.classList.add('dragging');});
+    slot.addEventListener('dragend',()=>{slot.classList.remove('dragging');document.querySelectorAll('.tl-slot.drag-over').forEach(s=>s.classList.remove('drag-over'));});
+    slot.addEventListener('dragover',ev=>{ev.preventDefault();ev.dataTransfer.dropEffect='move';slot.classList.add('drag-over');});
+    slot.addEventListener('dragleave',()=>slot.classList.remove('drag-over'));
+    slot.addEventListener('drop',ev=>{
+      ev.preventDefault();slot.classList.remove('drag-over');
+      const toIdx=parseInt(slot.dataset.idx);
+      if(dragIdx===null||dragIdx===toIdx)return;
+      const moved=timeline.splice(dragIdx,1)[0];
+      timeline.splice(toIdx,0,moved);
+      dragIdx=null;renderTimeline();renderList();
+    });
+    const dot=document.createElement('div');dot.className='tl-dot';slot.appendChild(dot);
+    const lbl=document.createElement('div');lbl.className='tl-label'+(disp.over?' lbl-over':'');
+    if(!disp.over){
+      // split "MM:SS @XXXs" into two lines
+      const parts=disp.label.split(' ');
+      lbl.innerHTML=`${parts[0]}<br><span style="font-size:11px;opacity:.7">${parts[1]||''}</span>`;
+    }else{
+      lbl.textContent=disp.label;
+    }
+    slot.appendChild(lbl);
+    const idx=i;
+    if(e.type==='wait'){
+      const wc=document.createElement('div');wc.className='wc';
+      wc.innerHTML=`⠿ ⏳ 等待 <b>${e.duration}s</b>`;
+      const rm=document.createElement('button');rm.className='rm';rm.textContent='×';
+      rm.onclick=(ev)=>{ev.stopPropagation();timeline.splice(idx,1);renderTimeline();renderList();};
+      wc.appendChild(rm);slot.appendChild(wc);
+    }else{
+      const endD=toCountdown(e.end);
+      const isPR=isPrepReduce(e);
+      const isAD=e.castTrunc;
+      const card=document.createElement('div');
+      card.className='oc'+(disp.over?' oc-over':'')+(isPR?' oc-speed':'')+(isAD?' oc-trunc':'');
+      // image
+      const imgEl=document.createElement('img');
+      imgEl.className='oc-img';imgEl.alt=e.srcName||'';imgEl.style.display='none';
+      const phEl=document.createElement('div');
+      phEl.className='oc-img-placeholder';
+      phEl.textContent=e.srcName?e.srcName.slice(0,4):'—';
+      if(e.srcName) setImgWithFallback(imgEl,e.srcName);
+      card.appendChild(imgEl);
+      card.appendChild(phEl);
+      const body=document.createElement('div');body.className='oc-body';
+      const prepDisplay=e.prepReduced
+        ?`<span style="text-decoration:line-through;opacity:.4">${e.prep}s</span> <span style="color:var(--orange);font-weight:700">5s⚡</span>`
+        :`${e.effectivePrep!==undefined?e.effectivePrep:e.prep}s`;
+      const castDisplay=isAD
+        ?`<span style="text-decoration:line-through;opacity:.4">${e.cast}s</span> <span style="color:var(--yellow);font-weight:700">${e.effectiveCast}s⏱</span>`
+        :`${e.effectiveCast!==undefined?e.effectiveCast:e.cast}s`;
+      // note tag + end time (short MM:SS, no @Xs)
+      const noteTag=e.note?`<span class="oc-note-tag">${e.note}</span>`:'';
+      const endShort=(()=>{const r=LIMIT-e.end;if(r>=0)return`${Math.floor(r/60)}:${String(r%60).padStart(2,'0')}`;return`+${-r}s`;})();
+      body.innerHTML=`<div class="oc-name">${noteTag}${e.srcName||e.name}${isPR?' <span style="color:var(--orange);font-size:11px">▶次縮短</span>':''}</div>
+        <div class="oc-effect">${e.name}</div>
+        <div class="oc-times">準備:${prepDisplay}&ensp;発動:${castDisplay}&ensp;結束:${endShort}</div>
+        ${isAD?`<div class="oc-trunc-note">⚠ 效果強制於 02:00 結束（縮短至${e.effectiveCast}s）</div>`:''}` ;
+      // note input (hidden until edit clicked)
+      const noteInp=document.createElement('input');
+      noteInp.className='oc-note-input';
+      noteInp.type='text';noteInp.maxLength=10;
+      noteInp.placeholder='備註（最多10字）';
+      noteInp.value=e.note||'';
+      noteInp.style.display='none';
+      noteInp.addEventListener('input',()=>{
+        timeline[idx].note=noteInp.value.slice(0,10);
+      });
+      noteInp.addEventListener('keydown',(ev)=>{
+        if(ev.key==='Enter'||ev.key==='Escape'){noteInp.style.display='none';renderTimeline();}
+      });
+      noteInp.addEventListener('blur',()=>{noteInp.style.display='none';renderTimeline();});
+      body.appendChild(noteInp);
+      card.appendChild(body);
+
+      // edit button (pencil)
+      const editBtn=document.createElement('button');
+      editBtn.className='oc-edit';editBtn.textContent='✏';editBtn.title='編輯備註';
+      editBtn.onclick=(ev)=>{
+        ev.stopPropagation();
+        const shown=noteInp.style.display!=='none';
+        noteInp.style.display=shown?'none':'block';
+        if(!shown){noteInp.focus();noteInp.select();}
+      };
+      card.appendChild(editBtn);
+      const rm=document.createElement('button');rm.className='rm';rm.textContent='×';
+      rm.onclick=(ev)=>{ev.stopPropagation();timeline.splice(idx,1);renderTimeline();renderList();};
+      card.appendChild(rm);slot.appendChild(card);
+    }
+    ruler.appendChild(slot);
+  }
+  if(entries.length>0){
+    const ed=toCountdown(elapsed);
+    const fs=document.createElement('div');fs.className='tl-slot';
+    fs.innerHTML=`<div class="tl-dot" style="background:${ed.over?'var(--over)':'var(--text-dim)'}"></div><div class="tl-label ${ed.over?'lbl-over':''}">${ed.label}</div><div style="font-size:11px;color:var(--text-dim);padding:5px 0 2px 4px;">— 結束 —</div>`;
+    ruler.appendChild(fs);
+  }else{
+    ruler.innerHTML+='<div style="padding:16px 0 0 4px;font-size:12px;color:var(--text-dim)">從右側選擇指令加入…</div>';
+  }
+  const hd=toCountdown(elapsed);
+  const td=document.getElementById('total-display');
+  td.textContent=hd.label;
+  td.className=hd.over?'td-over':elapsed>=LIMIT-60?'td-warn':'td-ok';
+}
+
+function addWait(sec){sec=parseInt(sec);if(!sec||sec<=0)return;timeline.push({type:'wait',duration:sec});renderTimeline();}
+function clearTimeline(){if(!timeline.length)return;if(!confirm('清空時間軸？'))return;timeline=[];selectedSrc={};renderTimeline();renderList();}
+
+// ── Order list render (new card format) ──────────
+function renderList(){
+  const cat=document.getElementById('cat-sel').value;
+  const q=document.getElementById('srch').value.trim().toLowerCase();
+  const ag=activeGroups();
+  const list=document.getElementById('order-list');list.innerHTML='';
+  const filtered=orders.filter(o=>{
+    if(cat!=='全部'&&o.cat!==cat)return false;
+    if(q&&!o.name.toLowerCase().includes(q)&&!(o.src||[]).join('').toLowerCase().includes(q))return false;
+    return true;
+  });
+  document.getElementById('count-lbl').textContent=`${filtered.length} 件`;
+  for(const o of filtered){
+    const blocked=!!(o.group&&ag.has(o.group));
+    const card=document.createElement('div');
+    card.className='or-card'+(blocked?' taken':'');
+
+    // Head: badge + effect name + times
+    const head=document.createElement('div');head.className='or-card-head';
+    const castLabel=o.cast===0?'<span style="color:var(--green)">即時</span>':`${o.cast}s`;
+    head.innerHTML=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="cbadge cb-${o.cat}">${o.cat}</span>
+      <span class="or-eff-name">${o.name}</span>
+    </div>
+    <div class="or-eff-times" style="margin-top:5px">
+      <span>準備時間：${o.prep}s</span><span>發動時間：${castLabel}</span>
+    </div>
+    ${blocked?`<div class="or-excl">⚠ 同效果互斥，已在時間軸中</div>`:''}`;
+    card.appendChild(head);
+
+    // Source buttons row
+    const srcs=document.createElement('div');srcs.className='or-card-srcs';
+    const srcList=o.src&&o.src.length?o.src:['（無來源）'];
+    const curSel=selectedSrc[o.id]||(srcList[0]);
+
+    for(const s of srcList){
+      const btn=document.createElement('button');
+      btn.className='src-btn'+(s===curSel?' selected':'');
+      const nameSpan=document.createElement('span');nameSpan.textContent=s;
+      btn.appendChild(nameSpan);
+      if(o.src&&o.src.length){
+        btn.onclick=()=>{selectedSrc[o.id]=s;renderList();};
+      }
+      srcs.appendChild(btn);
+    }
+
+    // Add button
+    if(!blocked){
+      const addBtn=document.createElement('button');
+      addBtn.className='add-sel-btn';
+      addBtn.textContent='加入時間軸';
+      addBtn.onclick=()=>{
+        const sname=selectedSrc[o.id]||(o.src&&o.src[0])||null;
+        addOrder(o,sname);
+      };
+      srcs.appendChild(addBtn);
+    }else{
+      const takenLbl=document.createElement('span');
+      takenLbl.className='taken-lbl';takenLbl.textContent='已使用';
+      srcs.appendChild(takenLbl);
+    }
+    card.appendChild(srcs);
+    list.appendChild(card);
+  }
+}
+
+function addOrder(o, srcName){
+  timeline.push({type:'order',name:o.name,prep:o.prep,cast:o.cast,group:o.group||null,srcName:srcName||null});
+  renderTimeline();renderList();
+  const sc=document.getElementById('tl-scroll');
+  setTimeout(()=>sc.scrollTop=sc.scrollHeight,50);
+}
+
+// ── Share / Screenshot (pure Canvas draw) ─────────
+async function shareTimeline(){
+  if(!timeline.length){alert('時間軸是空的');return;}
+  const pop=document.getElementById('share-pop');
+  const preview=document.getElementById('snap-preview');
+  pop.classList.add('open');
+  preview.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">產生截圖中…</div>';
+
+  const {entries,elapsed}=computeTimeline();
+
+  // ── Colours ──────────────────────────────────
+  const C={bg:'#0d1018',surface:'#141820',surface2:'#191e2c',border:'#252d44',
+    accent:'#5b9cf6',text:'#c9d1e8',dim:'#5a6480',
+    green:'#4ade80',yellow:'#fbbf24',red:'#f87171',teal:'#67e8f9',orange:'#fb923c'};
+
+  // ── Layout ───────────────────────────────────
+  const DPR=2;
+  const W=440;
+  // Time labels occupy 0..TL_W, dot sits at DOT_X, cards start at CARD_X
+  const TL_W=68;   // right edge of time label text
+  const DOT_X=88;  // centre of the vertical line & dots
+  const CARD_X=DOT_X+14;
+  const PAD_R=12;
+  const CARD_W=W-CARD_X-PAD_R;
+  const HEADER_H=52; const FOOTER_H=42;
+  const IMG_S=50; const ROW_PAD=11;
+
+  // Row height depends on content
+  function rowH(e){
+    if(!e||e.type==='wait') return 44;
+    let h=IMG_S+ROW_PAD*2; // image height + top/bottom padding
+    if(e.note) h+=16;       // note tag line
+    if(e.castTrunc) h+=14;  // 02:00 warning line
+    return Math.max(h, IMG_S+ROW_PAD*2);
+  }
+
+  const totalH=HEADER_H+36+entries.reduce((s,e)=>s+rowH(e),0)+FOOTER_H+8;
+
+  // ── Wait for webfonts ────────────────────────
+  await Promise.all([
+    document.fonts.load('bold 15px "Noto Sans JP"'),
+    document.fonts.load('12px "Share Tech Mono"'),
+  ]).catch(()=>{});
+
+  // ── Create canvas (single scale call) ────────
+  const cv=document.createElement('canvas');
+  cv.width=W*DPR; cv.height=totalH*DPR;
+  const g=cv.getContext('2d');
+  g.scale(DPR,DPR);
+
+  // ── Helpers ──────────────────────────────────
+  function rr(x,y,w,h,r){
+    g.beginPath();g.moveTo(x+r,y);g.lineTo(x+w-r,y);
+    g.quadraticCurveTo(x+w,y,x+w,y+r);g.lineTo(x+w,y+h-r);
+    g.quadraticCurveTo(x+w,y+h,x+w-r,y+h);g.lineTo(x+r,y+h);
+    g.quadraticCurveTo(x,y+h,x,y+h-r);g.lineTo(x,y+r);
+    g.quadraticCurveTo(x,y,x+r,y);g.closePath();
+  }
+  function tlabel(sec){
+    const r=LIMIT-sec;
+    if(r>=0) return{mm:`${Math.floor(r/60)}:${String(r%60).padStart(2,'0')}`,at:`@${r}s`,over:false};
+    return{mm:`+${-r}s`,at:'',over:true};
+  }
+  function trunc(txt,maxW){
+    let t=txt;
+    while(g.measureText(t).width>maxW&&t.length>1) t=t.slice(0,-1);
+    return t===txt?t:t.slice(0,-1)+'…';
+  }
+
+  const lineX=DOT_X;
+
+  // ── Background ───────────────────────────────
+  g.fillStyle=C.bg; g.fillRect(0,0,W,totalH);
+
+  // ── Header ───────────────────────────────────
+  g.fillStyle=C.surface; g.fillRect(0,0,W,HEADER_H);
+  g.fillStyle=C.border;  g.fillRect(0,HEADER_H-1,W,1);
+  g.fillStyle=C.accent;  g.font='bold 15px "Noto Sans JP"'; g.fillText('⏱ 時間軸',14,34);
+  const endLabelH=tlabel(elapsed); const endOver=elapsed>LIMIT;
+  g.fillStyle=endOver?C.red:elapsed>=LIMIT-60?C.yellow:C.green;
+  g.font='bold 20px "Share Tech Mono"';
+  const endHeaderTxt=endOver?endLabelH.mm:`${endLabelH.mm} ${endLabelH.at}`;
+  g.fillText(endHeaderTxt,W-g.measureText(endHeaderTxt).width-14,35);
+
+  // ── Vertical line ────────────────────────────
+  const lineTop=HEADER_H+6; const lineBot=totalH-FOOTER_H+10;
+  const grad=g.createLinearGradient(0,lineTop,0,lineBot);
+  grad.addColorStop(0,C.green);grad.addColorStop(0.5,C.border);grad.addColorStop(1,C.red);
+  g.strokeStyle=grad;g.lineWidth=2;g.globalAlpha=.35;
+  g.beginPath();g.moveTo(lineX,lineTop);g.lineTo(lineX,lineBot);g.stroke();
+  g.globalAlpha=1;
+
+  // ── Anchor row ───────────────────────────────
+  let y=HEADER_H+10;
+  g.fillStyle=C.green; g.font='bold 13px "Share Tech Mono"';
+  // time label: right-aligned to TL_W
+  const anchorLbl='15:00';
+  g.fillText(anchorLbl,TL_W-g.measureText(anchorLbl).width,y+16);
+  g.fillStyle=C.green; g.beginPath();g.arc(lineX,y+12,7,0,Math.PI*2);g.fill();
+  g.font='bold 14px "Noto Sans JP"'; g.fillText('▶ 戰鬥開始',CARD_X,y+16);
+  y+=40;
+
+  // ── Entry rows ───────────────────────────────
+  let overInserted=false;
+  for(const e of entries){
+    const rh=rowH(e);
+
+    // over-limit marker
+    if(!overInserted&&e.start>=LIMIT){
+      overInserted=true;
+      g.fillStyle=C.red; g.font='12px "Share Tech Mono"';
+      const ol='0:00'; g.fillText(ol,TL_W-g.measureText(ol).width,y+16);
+      g.fillStyle=C.red; g.beginPath();g.arc(lineX,y+12,6,0,Math.PI*2);g.fill();
+      g.font='12px "Noto Sans JP"'; g.fillText('⚠ 超出 15 分鐘',CARD_X,y+16);
+      y+=36;
+    }
+
+    // time label (right-aligned to TL_W) + dot
+    const over=e.start>LIMIT;
+    const tl=tlabel(e.start);
+    g.fillStyle=over?C.red:C.dim; g.font='12px "Share Tech Mono"';
+    g.fillText(tl.mm,TL_W-g.measureText(tl.mm).width,y+16);
+    if(!tl.over&&tl.at){
+      g.font='10px "Share Tech Mono"'; g.globalAlpha=.7;
+      g.fillText(tl.at,TL_W-g.measureText(tl.at).width,y+28);
+      g.globalAlpha=1;
+    }
+    const dotR=e.type==='wait'?4:7;
+    const dotY=y+(e.type==='wait'?14:16);
+    g.fillStyle=e.type==='wait'?C.dim:(over?C.red:C.accent);
+    g.beginPath();g.arc(lineX,dotY,dotR,0,Math.PI*2);g.fill();
+
+    if(e.type==='wait'){
+      g.fillStyle=C.surface2; rr(CARD_X,y+2,CARD_W,rh-6,5); g.fill();
+      g.fillStyle=C.dim; g.font='italic 13px "Noto Sans JP"';
+      g.fillText(`⏳ 等待  ${e.duration}s`,CARD_X+12,y+22);
+
+    }else{
+      const isPR=isPrepReduce(e);
+      const isAD=e.castTrunc;
+      const accentCol=isPR?C.orange:isAD?C.yellow:(over?C.red:C.accent);
+
+      // card bg + left bar
+      g.fillStyle=C.surface2; rr(CARD_X,y+2,CARD_W,rh-4,5); g.fill();
+      g.fillStyle=accentCol;  rr(CARD_X,y+2,3,rh-4,2);       g.fill();
+
+      // thumbnail image
+      const imgX=CARD_X+8; const imgY=y+ROW_PAD;
+      if(e.srcName){
+        await new Promise(res=>{
+          const img=new Image();
+          const exts=['png','jpg','jpeg','webp']; let ei=0;
+          function next(){
+            if(ei>=exts.length){res();return;}
+            img.src=`images/${encodeURIComponent(e.srcName)}.${exts[ei++]}`;
+          }
+          img.onload=()=>{g.save();rr(imgX,imgY,IMG_S,IMG_S,4);g.clip();g.drawImage(img,imgX,imgY,IMG_S,IMG_S);g.restore();res();};
+          img.onerror=next; next();
+        });
+      }else{
+        g.fillStyle=C.surface; rr(imgX,imgY,IMG_S,IMG_S,4); g.fill();
+        g.strokeStyle=C.border; g.lineWidth=1; rr(imgX,imgY,IMG_S,IMG_S,4); g.stroke();
+      }
+
+      // text area
+      const tx=imgX+IMG_S+8; const tw=CARD_X+CARD_W-tx-6;
+      let cy=y+ROW_PAD+12;
+
+      // note tag
+      if(e.note){
+        g.font='bold 11px "Noto Sans JP"';
+        const nw=g.measureText(e.note).width+12;
+        g.fillStyle='#1a2a1a'; rr(tx,cy-12,nw,17,3); g.fill();
+        g.strokeStyle=C.green; g.lineWidth=1; rr(tx,cy-12,nw,17,3); g.stroke();
+        g.fillStyle=C.green; g.fillText(e.note,tx+6,cy);
+        cy+=19;
+      }
+
+      // main name
+      const mainName=e.srcName||e.name;
+      g.fillStyle=over?C.red:C.text; g.font='bold 15px "Noto Sans JP"';
+      g.fillText(trunc(mainName,tw),tx,cy); cy+=17;
+
+      // prep-reduce badge
+      if(isPR){
+        g.fillStyle=C.orange; g.font='bold 11px "Noto Sans JP"';
+        g.fillText('▶ 次の準備5s',tx,cy); cy+=14;
+      }
+
+      // effect name
+      if(e.srcName){
+        g.fillStyle=C.teal; g.font='12px "Noto Sans JP"';
+        g.fillText(trunc(e.name,tw),tx,cy); cy+=14;
+      }
+
+      // times
+      const effPrep=e.prepReduced?5:(e.effectivePrep!==undefined?e.effectivePrep:e.prep);
+      const effCast=e.effectiveCast!==undefined?e.effectiveCast:e.cast;
+      const endLbl=tlabel(e.end).mm;
+      g.fillStyle=C.dim; g.font='11px "Share Tech Mono"';
+      if(e.prepReduced){
+        const pre=`準備:`; const orig=`${e.prep}s`; const rest=`→5s⚡ 発動:${effCast}s 結束:${endLbl}`;
+        g.fillText(pre,tx,cy);
+        const pw=g.measureText(pre).width;
+        g.globalAlpha=.4; g.fillText(orig,tx+pw,cy);
+        const ow=g.measureText(orig).width;
+        g.strokeStyle=C.dim; g.lineWidth=1;
+        g.beginPath();g.moveTo(tx+pw,cy-3);g.lineTo(tx+pw+ow,cy-3);g.stroke();
+        g.globalAlpha=1;
+        g.fillStyle=C.orange; g.font='bold 11px "Share Tech Mono"';
+        g.fillText(rest,tx+pw+ow+2,cy);
+      }else{
+        g.fillText(trunc(`準備:${effPrep}s 発動:${effCast}s 結束:${endLbl}`,tw),tx,cy);
+      }
+      cy+=14;
+
+      // 02:00 truncation warning
+      if(isAD){
+        g.fillStyle=C.yellow; g.font='bold 11px "Noto Sans JP"';
+        g.fillText(trunc(`⚠ 02:00強制終止（${effCast}s）`,tw),tx,cy);
+      }
+    }
+    y+=rh;
+  }
+
+  // ── End marker ───────────────────────────────
+  const endD=tlabel(elapsed);
+  g.fillStyle=elapsed>LIMIT?C.red:C.dim;
+  g.font='12px "Share Tech Mono"';
+  g.fillText(endD.mm,TL_W-g.measureText(endD.mm).width,y+16);
+  if(!endD.over&&endD.at){
+    g.font='10px "Share Tech Mono"'; g.globalAlpha=.7;
+    g.fillText(endD.at,TL_W-g.measureText(endD.at).width,y+27);
+    g.globalAlpha=1;
+  }
+  g.fillStyle=elapsed>LIMIT?C.red:C.dim;
+  g.beginPath();g.arc(lineX,y+12,4,0,Math.PI*2);g.fill();
+  g.fillStyle=C.dim; g.font='12px "Noto Sans JP"'; g.fillText('— 結束 —',CARD_X,y+16);
+
+  // ── Show preview ─────────────────────────────
+  cv.style.cssText='width:100%;height:auto;display:block;border-radius:4px';
+  preview.innerHTML=''; preview.appendChild(cv);
+  document.getElementById('snap-dl-btn').onclick=()=>{
+    const a=document.createElement('a');
+    a.download='timeline_'+(new Date().toISOString().slice(0,16).replace('T','_').replace(/:/g,''))+'.png';
+    a.href=cv.toDataURL('image/png'); a.click();
+  };
+}
+
+document.getElementById('share-pop').addEventListener('click',function(e){
+  if(e.target===this)this.classList.remove('open');
+});
+// ── Export with embedded data ─────────────────────
+
+function loadFromUrl(){
+  const p=new URLSearchParams(location.search),d=p.get('d');if(!d)return;
+  try{const obj=JSON.parse(decodeURIComponent(atob(d)));if(obj.tl)timeline=obj.tl;}catch(e){}
+}
+loadFromUrl();renderTimeline();renderList();
+</script>
+</body>
+</html>
