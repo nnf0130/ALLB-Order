@@ -148,11 +148,12 @@ header h1{font-size:17px;font-weight:700;color:var(--accent);letter-spacing:.04e
 #snap-preview{border-radius:6px;overflow:hidden;border:1px solid var(--border);max-height:70vh;overflow-y:auto;background:var(--bg)}
 #snap-preview canvas{display:block;width:100%;height:auto}
 ::-webkit-scrollbar{width:5px}
+
 @media (max-width: 768px) {
-.app { flex-direction: column }
-#tl-panel { width: 100%; min-width: unset; height: 45vh; border-right: none; border-bottom: 1px solid var(--border) }
-#right-panel { height: 55vh }
-header h1 { font-size: 13px }
+  .app { flex-direction: column }
+  #tl-panel { width: 100%; min-width: unset; height: 45vh; border-right: none; border-bottom: 1px solid var(--border) }
+  #right-panel { height: 55vh }
+  header h1 { font-size: 13px }
 }
 </style>
 </head>
@@ -303,11 +304,13 @@ const DEFAULT_ORDERS = [
   {id:3030,name:"闇属性防御力減少Lv.3",  cat:"增益減益",prep:20,cast:0,group:"dark_def_dn", note:"敵前衛闇属性DEF特大減少（永続）",      src:["闇鎧の鉄壁破壊(P)","闇鎧の壁破壊"]},
 
   // 發動率
-  {id:4001,name:"補助スキル発動率増加Lv.3",cat:"發動率",prep:20,cast:80,group:"assist_up_l3",note:"味方全体補助スキル発動率特大増加",     src:["覚醒の日輪(P)","覚醒の三日月"]},
-  {id:4002,name:"補助スキル発動率増加Lv.4",cat:"發動率",prep:20,cast:90,group:"assist_up_l4",note:"味方全体補助スキル発動率超特大増加",   src:["覚醒の大天光(P)","覚醒の満月"]},
-  {id:4003,name:"補助スキル発動率減少Lv.3",cat:"發動率",prep:20,cast:80,group:"assist_dn_l3",note:"敵全体補助スキル発動率特大減少",       src:["日輪の覚醒妨害(P)","三日月の覚醒妨害"]},
-  {id:4004,name:"補助スキル発動率減少Lv.4",cat:"發動率",prep:20,cast:90,group:"assist_dn_l4",note:"敵全体補助スキル発動率超特大減少",     src:["大天光の覚醒妨害(P)","満月の覚醒妨害"]},
-
+  {id:4001,name:"補助スキル発動率増加Lv.3",cat:"發動率",prep:20,cast:80,group:"assist_up",note:"味方全体補助スキル発動率特大増加",     src:["覚醒の日輪(P)","覚醒の三日月"]},
+  {id:4003,name:"補助スキル発動率増加Lv.4",cat:"發動率",prep:20,cast:90,group:"assist_up",note:"味方全体補助スキル発動率超特大増加",   src:["覚醒の大天光(P)","覚醒の満月"]},
+  {id:4005,name:"補助スキル発動率増加Lv.5",cat:"發動率",prep:20,cast:90,group:"assist_up",note:"味方全体補助スキル発動率極大増加",   src:["覚醒の恒星(P)","覚醒の天月"]},
+  {id:4002,name:"補助スキル発動率減少Lv.3",cat:"發動率",prep:20,cast:80,group:"assist_dn",note:"敵全体補助スキル発動率特大減少",       src:["日輪の覚醒妨害(P)","三日月の覚醒妨害"]},
+  {id:4004,name:"補助スキル発動率減少Lv.4",cat:"發動率",prep:20,cast:90,group:"assist_dn",note:"敵全体補助スキル発動率超特大減少",     src:["大天光の覚醒妨害(P)","満月の覚醒妨害"]},
+  {id:4006,name:"補助スキル発動率減少Lv.5",cat:"發動率",prep:20,cast:90,group:"assist_dn",note:"敵全体補助スキル発動率極大減少",     src:["恒星の覚醒妨害(P)","天月の覚醒妨害"]},
+  
   // MP
   {id:5001,name:"MP軽減Lv.2",            cat:"MP",  prep:20,cast:70, group:"mp_reduce",   note:"味方全員メモリア消費MP特大軽減",       src:["魔減の展開"]},
   {id:5002,name:"MP軽減Lv.3",            cat:"MP",  prep:20,cast:80, group:"mp_reduce",   note:"味方全員メモリア消費MP特大軽減",       src:["魔縮領域(P)"]},
